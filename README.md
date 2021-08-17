@@ -4,7 +4,9 @@ This repo was forked from [gg2001/EmailBot](https://github.com/gg2001/EmailBot).
 
 ## About
 
-**EmailBot** allows for email address verification from Discord server members. This version is a security feature customized for the PennApps XXII.
+**EmailBot** allows for email address verification from Discord server members. This version is a security feature customized for the PennApps XXII. We want to verify that only accepted hackers can access the server.
+
+All users start out as **unverified**, and this bot removes this role upon reception of a matching code. From there, users are able to see the #rules channel and can acess the rest of the server after accepting.
 
 Our bot user is called **platy** and is hosted on Heroku.
 
@@ -43,6 +45,7 @@ Before running it make sure these environment variables are set. You will need a
 export SENDGRID_API_KEY='YOUR_SENDGRID_API_KEY'
 export SENDGRID_EMAIL='YOUR_SENDGRID_EMAIL'
 export DISCORD_TOKEN='YOUR_DISCORD_TOKEN'
+export AUTH_EMAILS_FILEPATH='YOUR_FILEPATH'
 ```
 
 Run the bot with:

@@ -336,7 +336,6 @@ dmypy.json
 cython_debug/
 
 ### End Python.gitignore
-
 bot.db
 .env
 dump.sql

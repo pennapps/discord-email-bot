@@ -2,7 +2,7 @@
 import discord
 from discord.ext import commands
 import sqlite3
-import re
+import csv
 import os
 import random
 from sendgrid import SendGridAPIClient
@@ -42,6 +42,15 @@ c.execute(
         role TEXT
     );
 """
+)
+
+# Create authenticated emails table if one doesn't exist
+c.execute(
+    """
+    CREATE TABLE IF NOT EXISTS authenticated_emails (
+        email TEXT
+    );
+    """
 )
 conn.commit()
 
@@ -174,14 +183,30 @@ def insert_email(email, userid, guildid):
     c.execute("UPDATE users SET email=? WHERE userid=? AND guildid=?", (email, userid, guildid))
     conn.commit()
 
-# Checks that email is of the correct format
+# Checks that email is authenticated
 def email_check(email):
-    regex = "(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|\"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*\")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])"
-    if re.search(regex, email):
-        return True
-    else:
-        return False
+    found_email = c.execute(
+        "SELECT email FROM authenticated_emails WHERE email=?", 
+        (email,)
+    ).fetchone()
+    return found_email != None
 
+# Populate authenticated email table
+def add_authenticated_email(email):
+    c.execute(
+        "INSERT INTO authenticated_emails VALUES (?)", 
+        (email, )
+    )
+    conn.commit()
+
+def populate_emails_table(emails_filepath):
+    emails_file = open(emails_filepath, encoding='utf-8-sig')
+    auth_emails = csv.DictReader(emails_file, delimiter=',')
+
+    for row in auth_emails:
+        add_authenticated_email(row['email'])
+
+populate_emails_table(os.environ.get('AUTH_EMAILS_FILEPATH'))
 
 ''' DISCORD EVENT HANDLING '''
 # Default intents + members
@@ -199,9 +224,7 @@ async def on_ready():
     # Log login message and set Game
     print("We have logged in as {0.user}".format(client))
     await client.change_presence(
-        activity=discord.Game(
-            name='.vstatus | github.com/gg2001/EmailBot'
-        )
+        activity=discord.Game(name='penn app')
     )
 
 @client.event
@@ -327,18 +350,47 @@ async def on_message(message):
             for user in users_to_verify:
                 verify_user(message.author.id, user[1])
                 user_guild = client.get_guild(user[1])
-                guild_db = get_guild(user[1])
-                role = discord.utils.get(user_guild.roles, name=guild_db[3])
-                if not role:
-                    await user_guild.create_role(name=guild_db[3])
-                    role = discord.utils.get(user_guild.roles, name=guild_db[3])
-                    
+                guild_info = get_guild(user[1])
+
                 member = user_guild.get_member(message.author.id)
-                if role not in member.roles:
-                        await member.add_roles(role)
+
+                # Add verified role
+                verify_role = discord.utils.get(
+                    user_guild.roles, 
+                    name=guild_info[3]
+                )
                 
+                # Create verified role if one doesn't exist
+                if not verify_role:
+                    await user_guild.create_role(name=guild_info[3])
+                    verify_role = discord.utils.get(
+                        user_guild.roles, 
+                        name=guild_info[3]
+                    )
+
+                if verify_role not in member.roles:
+                    await member.add_roles(verify_role)
+                
+                # Remove unverified role
+                unverified_role = discord.utils.get(
+                    user_guild.roles, 
+                    name='unverified'
+                )
+                
+                # Create unverified role if one doesn't exist
+                if not unverified_role:
+                    await user_guild.create_role(name=guild_info[3])
+                    unverified_role = discord.utils.get(
+                        user_guild.roles, 
+                        name='unverified'
+                    )
+
+                if unverified_role in member.roles:
+                    await member.remove_roles(unverified_role)
+
+                # Send confirmation message
                 await message.channel.send(
-                    "You have been verified on " + \
+                    "You have been verified on " + 
                     client.get_guild(user[1]).name + "."
                 )
         else:
