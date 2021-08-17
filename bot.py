@@ -1,3 +1,4 @@
+''' SETUP '''
 import discord
 from discord.ext import commands
 import sqlite3
@@ -9,59 +10,117 @@ from sendgrid.helpers.mail import Mail
 import requests
 from keep_alive import keep_alive
 
+# Uncomment for dotenv
+'''
+import dotenv
+dotenv.load_dotenv()
+'''
+
+# Connect to database
 conn = sqlite3.connect('bot.db')
 c = conn.cursor()
-c.execute("""CREATE TABLE IF NOT EXISTS users(
-   userid INT,
-   guildid INT,
-   email TEXT,
-   code INT,
-   verified INT);
-""")
-c.execute("""CREATE TABLE IF NOT EXISTS guilds(
-   guildid INT PRIMARY KEY,
-   domains TEXT,
-   onjoin INT,
-   role TEXT);
-""")
+
+# Create users table if one doesn't exist
+c.execute(
+    """
+    CREATE TABLE IF NOT EXISTS users(
+        userid INT,
+        guildid INT,
+        email TEXT,
+        code INT,
+        verified INT
+    );
+    """
+)
+
+# Create guides table if one doesn't exist
+c.execute(
+    """
+    CREATE TABLE IF NOT EXISTS guilds(
+        guildid INT PRIMARY KEY,
+        domains TEXT,
+        onjoin INT,
+        role TEXT
+    );
+"""
+)
 conn.commit()
 
-def get_guild(guildid):
-    return c.execute("SELECT * FROM guilds WHERE guildid=?", (guildid,)).fetchone()
 
-def new_guild(guildid, domains="", onjoin=0, role="Verified"):
-    c.execute("INSERT INTO guilds VALUES (?, ?, ?, ?)", (guildid, domains, onjoin, role))
+''' DATABASE METHODS '''
+# Returns guild with specific ID
+def get_guild(guildid):
+    return c.execute(
+        "SELECT * FROM guilds WHERE guildid=?", 
+        (guildid,)
+    ).fetchone()
+
+# Inserts new guild into the db
+def new_guild(guildid, domains="", onjoin=0, role="verified"):
+    c.execute(
+        "INSERT INTO guilds VALUES (?, ?, ?, ?)", 
+        (guildid, domains, onjoin, role)
+    )
     conn.commit()
 
+# Returns user info within a specific guild
 def get_user_guild(guildid, userid):
-    return c.execute("SELECT * FROM users WHERE guildid=? AND userid=?", (guildid, userid)).fetchone()
+    return c.execute(
+        "SELECT * FROM users WHERE guildid=? AND userid=?", 
+        (guildid, userid)
+    ).fetchone()
 
+# Returns user info (all guilds)
 def get_users_guilds(userid):
-    return c.execute("SELECT * FROM users WHERE userid=?", (userid,)).fetchall()
+    return c.execute(
+        "SELECT * FROM users WHERE userid=?", 
+        (userid,)
+    ).fetchall()
 
+# Returns user info given email and guild
 def get_emails_guilds(guildid, email):
-    return c.execute("SELECT * FROM users WHERE guildid=? AND email=? AND verified=1", (guildid, email)).fetchall()
+    return c.execute(
+        "SELECT * FROM users WHERE guildid=? AND email=? AND verified=1", 
+        (guildid, email)
+    ).fetchall()
 
+# Returns user info if given code matches
 def get_users_codes(userid, code):
-    return c.execute("SELECT * FROM users WHERE userid=? AND code=?", (userid, code)).fetchall()
+    return c.execute(
+        "SELECT * FROM users WHERE userid=? AND code=?", 
+        (userid, code)
+    ).fetchall()
 
+# Display verify message
 def verify_msg(guildname, domains):
     if domains == "":
-        return "{} hasn't setup this bot yet.".format(guildname)
+        return "{} hasn't setup this bot yet."\
+            .format(guildname)
     else: 
-        return "To verify yourself on {}, **reply here with your @{} email address**.".format(guildname, domains)
+        return "To verify yourself on {}, **reply here with your @{} email address**."\
+            .format(guildname, domains)
 
+# Inserts new user into the db
 def new_user(userid, guildid, email="", code=0, verified=0):
-    c.execute("INSERT INTO users VALUES (?, ?, ?, ?, ?)", (userid, guildid, email, code, verified))
+    c.execute(
+        "INSERT INTO users VALUES (?, ?, ?, ?, ?)", 
+        (userid, guildid, email, code, verified)
+    )
     conn.commit()
 
+# Verifies user in the db
 def verify_user(userid, guildid):
-    c.execute("UPDATE users SET verified=1 WHERE userid=? AND guildid=?", (userid, guildid))
+    c.execute(
+        "UPDATE users SET verified=1 WHERE userid=? AND guildid=?", 
+        (userid, guildid)
+    )
     conn.commit()
 
+# Get domains from db
 def get_domains(guildid):
     return get_guild(guildid)[1]
 
+# Add domain to db in a pipe-separated format
 def add_domain(domain, guildid):
     d_get = get_domains(guildid)
     prevdomains = []
@@ -69,36 +128,58 @@ def add_domain(domain, guildid):
         prevdomains = get_domains(guildid).split('|')
     if domain not in prevdomains:
         prevdomains.append(domain)
-        c.execute("UPDATE guilds SET domains=? WHERE guildid=?", ('|'.join(prevdomains), guildid))
+        c.execute(
+            "UPDATE guilds SET domains=? WHERE guildid=?", 
+            ('|'.join(prevdomains), guildid)
+        )
         conn.commit()
 
+# Remove domain from db
 def remove_domain(domain, guildid):
     prevdomains = get_domains(guildid).split('|')
     if domain in prevdomains:
         prevdomains.remove(domain)
-        c.execute("UPDATE guilds SET domains=? WHERE guildid=?", ('|'.join(prevdomains), guildid))
+        c.execute(
+            "UPDATE guilds SET domains=? WHERE guildid=?", 
+            ('|'.join(prevdomains), guildid)
+        )
         conn.commit()
 
+# Change role of user in a guild
 def change_role(role, guildid):
-    c.execute("UPDATE guilds SET role=? WHERE guildid=?", (role, guildid))
+    c.execute(
+        "UPDATE guilds SET role=? WHERE guildid=?", 
+        (role, guildid)
+    )
     conn.commit()
 
+# Enables verification on join
 def enable_onjoin(guildid):
-    c.execute("UPDATE guilds SET onjoin=? WHERE guildid=?", (1, guildid))
+    c.execute(
+        "UPDATE guilds SET onjoin=? WHERE guildid=?", 
+        (1, guildid)
+    )
     conn.commit()
 
+# Disables verification on join
 def disable_onjoin(guildid):
-    c.execute("UPDATE guilds SET onjoin=? WHERE guildid=?", (0, guildid))
+    c.execute(
+        "UPDATE guilds SET onjoin=? WHERE guildid=?", 
+        (0, guildid)
+    )
     conn.commit()
 
+# Insert code for a user in the db
 def insert_code(code, userid, guildid):
     c.execute("UPDATE users SET code=? WHERE userid=? AND guildid=?", (code, userid, guildid))
     conn.commit()
 
+# Insert email for a user in the db
 def insert_email(email, userid, guildid):
     c.execute("UPDATE users SET email=? WHERE userid=? AND guildid=?", (email, userid, guildid))
     conn.commit()
 
+# Checks that email is of the correct format
 def email_check(email):
     regex = "(?:[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*|\"(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21\x23-\x5b\x5d-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])*\")@(?:(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?|\[(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?|[a-z0-9-]*[a-z0-9]:(?:[\x01-\x08\x0b\x0c\x0e-\x1f\x21-\x5a\x53-\x7f]|\\[\x01-\x09\x0b\x0c\x0e-\x7f])+)\])"
     if re.search(regex, email):
@@ -106,6 +187,7 @@ def email_check(email):
     else:
         return False
 
+# Send an email with mailgun
 def mailgun_send(email_address, verification_code):
 	return requests.post(
 		"https://api.mailgun.net/v3/{}/messages".format(os.environ.get('MAILGUN_DOMAIN')),
@@ -115,63 +197,115 @@ def mailgun_send(email_address, verification_code):
 			"subject": "Verify your server email",
 			"text": str(verification_code)})
 
+
+''' DISCORD EVENT HANDLING '''
+# Default intents + members
 intents = discord.Intents.default()
 intents.members = True
 
-client = commands.Bot(command_prefix = '.', intents=intents)
+# Create client with prefix "."
+client = commands.Bot(
+    command_prefix = '.', 
+    intents=intents
+)
 
 @client.event
 async def on_ready():
-    print('We have logged in as {0.user}'.format(client))
-    await client.change_presence(activity=discord.Game(name='.vstatus | github.com/gg2001/EmailBot'))
+    # Log login message and set Game
+    print("We have logged in as {0.user}".format(client))
+    await client.change_presence(
+        activity=discord.Game(
+            name='.vstatus | github.com/gg2001/EmailBot'
+        )
+    )
 
 @client.event
 async def on_member_join(member):
+    # Check which guild a member is being verified for
     check_on_join = get_guild(member.guild.id)
+
+    # If guild isn't in db, add to db
     if check_on_join == None:
         new_guild(member.guild.id)
+    
+    # Else if verification is enabled for the guild
     elif check_on_join[2] == 1:
+        # Check if user exists with guild in db
         user_prev_verify = get_user_guild(member.guild.id, member.id)
+        
+        # If user not with the guild in db
         if user_prev_verify == None:
+            # Send verification message and add user with guild to db
             await member.send(verify_msg(member.guild, check_on_join[1]))
             new_user(member.id, member.guild.id)
+        
+        # Else if user if unverified
         elif user_prev_verify[4] == 0:
+            # Send verification message
             await member.send(verify_msg(member.guild, check_on_join[1]))
+        
+        # Else if user is verified
         elif user_prev_verify[4] == 1:
+            # Change role to verified role (create if doesn't exist)
             role = discord.utils.get(member.guild.roles, name=check_on_join[3])
             if role:
                 if role not in member.roles:
                     await member.add_roles(role)
             else:
                 await member.guild.create_role(name=check_on_join[3])
-                role = discord.utils.get(member.guild.roles, name=check_on_join[3])
+                role = discord.utils.get(
+                    member.guild.roles, 
+                    name=check_on_join[3]
+                )
                 await member.add_roles(role)
 
 @client.event
 async def on_message(message):
+    # Stop if message was from self
     if message.author == client.user:
         return
+    
+    # Get last sent message sans whitespace
     message_content = message.content.strip()
+
+    # If the user sends message through DM with email address
     if (message.guild == None) and email_check(message_content):
+        # Get all guild info
         users_guilds = get_users_guilds(message.author.id)
         if len(users_guilds) >= 1:
             guild_list = [i[1] for i in users_guilds if i[4] == 0]
             verif_list = []
-            for i in guild_list:
-                email_guild = get_emails_guilds(i, message_content)
+            
+            # Verify email has domain for each guild
+            for guild_id in guild_list:
+                email_guild = get_emails_guilds(guild_id, message_content)
                 if len(email_guild) > 0:
                     continue
-                guild_domains = get_domains(i)
+                guild_domains = get_domains(guild_id)
                 if len(guild_domains) == 0:
                     continue
                 guild_domains = guild_domains.split('|')
                 if message_content.split("@")[1] in guild_domains:
-                    verif_list.append(i)
+                    verif_list.append(guild_id)
+            
             if len(verif_list) >= 1:
+                # Generate random code
                 random_code = random.randint(100000, 999999)
-                for i in verif_list:
-                    insert_code(random_code, message.author.id, i)
-                    insert_email(message_content, message.author.id, i)
+                
+                # Insert code into db for all guilds
+                for verified_guild_id in verif_list:
+                    insert_code(
+                        random_code, 
+                        message.author.id, 
+                        verified_guild_id
+                    )
+                    insert_email(
+                        message_content, 
+                        message.author.id, 
+                        verified_guild_id
+                    )
+                
+                # Send email
                 emailmessage = Mail(
                     from_email=os.environ.get('SENDGRID_EMAIL'),
                     to_emails=message_content,
@@ -183,33 +317,45 @@ async def on_message(message):
                     print(response.status_code)
                     print(response.body)
                     print(response.headers)
-                    await message.channel.send("Email sent. **Reply here with your verification code**. If you haven't received it, check your spam folder.")
+                    await message.channel.send(
+                        "Email sent. **Reply here with your verification code**. \
+                        If you haven't received it, check your spam folder."
+                    )
                 except Exception as e:
                     mailgun_email = mailgun_send(message_content, random_code)
                     if mailgun_email.status_code == 200:
-                        await message.channel.send("Email sent. **Reply here with your verification code**. If you haven't received it, check your spam folder.")
+                        await message.channel.send(
+                            "Email sent. **Reply here with your verification code**. \
+                            If you haven't received it, check your spam folder."
+                        )
                     else:
                         await message.channel.send("Email failed to send.")
             else:
                 await message.channel.send("Invalid email.")
         else:
             await message.channel.send("You have not joined a server.")
+    
+    # Else if user sends a six-digit code
     elif (len(message_content) == 6) and message_content.isdigit():
         verif_code = int(message_content)
-        prev_codes_f = get_users_codes(message.author.id, verif_code)
-        prev_codes_g = [i for i in prev_codes_f if i[4] == 0]
-        prev_codes = []
-        for i in prev_codes_g:
-            user_emails = get_emails_guilds(i[1], i[2])
+        
+        # Get user info if code matches
+        users_with_code = get_users_codes(message.author.id, verif_code)
+        unverified_users_with_code = [i for i in users_with_code if i[4] == 0]
+        users_to_verify = []
+        for user in unverified_users_with_code:
+            user_emails = get_emails_guilds(user[1], user[2])
             if len(user_emails) >= 1:
                 continue
             else:
-                prev_codes.append(i)
-        if len(prev_codes) >= 1:
-            for i in prev_codes:
-                verify_user(message.author.id, i[1])
-                curr_guild = client.get_guild(i[1])
-                guild_db = get_guild(i[1])
+                users_to_verify.append(user)
+        
+        # Verify user in guilds
+        if len(users_to_verify) >= 1:
+            for user in users_to_verify:
+                verify_user(message.author.id, user[1])
+                curr_guild = client.get_guild(user[1])
+                guild_db = get_guild(user[1])
                 role = discord.utils.get(curr_guild.roles, name=guild_db[3])
                 if role:
                     member = curr_guild.get_member(message.author.id)
@@ -220,7 +366,10 @@ async def on_message(message):
                     role = discord.utils.get(curr_guild.roles, name=guild_db[3])
                     member = curr_guild.get_member(message.author.id)
                     await member.add_roles(role)
-                await message.channel.send("You have been verified on " + client.get_guild(i[1]).name + ".")
+                await message.channel.send(
+                    "You have been verified on " + \
+                    client.get_guild(user[1]).name + "."
+                )
         else:
             await message.channel.send("Incorrect code.")
     elif message.guild == None:
@@ -229,79 +378,122 @@ async def on_message(message):
 
 @client.event
 async def on_guild_join(guild):
+    # Insert guild into db if not already there when bot joins
     check_on_join = get_guild(guild.id)
     if check_on_join == None:
         new_guild(guild.id)
 
+
+''' DISCORD COMMANDS '''
 @client.command()
 async def rolechange(ctx, role=None):
     if role and ctx.guild and ctx.author.guild_permissions.administrator:
         role = role.strip()
+        
+        # Get guild info (if none, add to db)
         check_on_join = get_guild(ctx.guild.id)
         if check_on_join == None:
             new_guild(ctx.guild.id)
-        check_on_join = get_guild(ctx.guild.id)
-        role_d = discord.utils.get(ctx.guild.roles, name=check_on_join[3])
-        if role_d:
-            await role_d.edit(name=role)
+            check_on_join = get_guild(ctx.guild.id)
+        
+        # Edit verified role name if already exists
+        curr_verified_role = discord.utils.get(
+            ctx.guild.roles, 
+            name=check_on_join[3]
+        )
+        if curr_verified_role:
+            await curr_verified_role.edit(name=role)
             change_role(role, ctx.guild.id)
-            await ctx.send("```Verified role: " + get_guild(ctx.guild.id)[3] + "```")
+            await ctx.send(
+                "```Verified role: " + get_guild(ctx.guild.id)[3] + "```"
+            )
+        
+        # Else check if role exists
         else:
-            role_d2 = discord.utils.get(ctx.guild.roles, name=role)
-            if role_d2:
+            new_verified_role = discord.utils.get(ctx.guild.roles, name=role)
+            
+            # If it does, change the verified role to it
+            if new_verified_role:
                 change_role(role, ctx.guild.id)
-                await ctx.send("```Verified role: " + get_guild(ctx.guild.id)[3] + ".```")
+                await ctx.send(
+                    "```Verified role: " + get_guild(ctx.guild.id)[3] + ".```"
+                )
+
+            # If it doesn't, create it
             else:
                 await ctx.guild.create_role(name=role)
                 change_role(role, ctx.guild.id)
-                await ctx.send("```Verified role: " + get_guild(ctx.guild.id)[3] + ".```")
+                await ctx.send(
+                    "```Verified role: " + get_guild(ctx.guild.id)[3] + ".```"
+                )
 
 @client.command()
 async def domainadd(ctx, domain=None):
     if domain and ctx.guild and ctx.author.guild_permissions.administrator:
         domain = domain.strip()
+        
+        # Get guild info (if none, add to db)
         check_on_join = get_guild(ctx.guild.id)
         if check_on_join == None:
             new_guild(ctx.guild.id)
+        
+        # Add domain and send message
         add_domain(domain, ctx.guild.id)
-        await ctx.send("```Current email domains: " + get_domains(ctx.guild.id) + "```")
+        await ctx.send(
+            "```Current email domains: " + get_domains(ctx.guild.id) + "```"
+        )
 
 @client.command()
 async def domainremove(ctx, domain=None):
     if domain and ctx.guild and ctx.author.guild_permissions.administrator:
         domain = domain.strip()
+       
+        # Get guild info (if none, add to db)
         check_on_join = get_guild(ctx.guild.id)
         if check_on_join == None:
             new_guild(ctx.guild.id)
+        
+        # Remove domain and send message
         remove_domain(domain, ctx.guild.id)
-        await ctx.send("```Current email domains: " + get_domains(ctx.guild.id) + "```")
+        await ctx.send(
+            "```Current email domains: " + get_domains(ctx.guild.id) + "```"
+        )
 
 @client.command()
 async def enableonjoin(ctx):
     if ctx.guild and ctx.author.guild_permissions.administrator:
+        # Get guild info (if none, add to db)
         check_on_join = get_guild(ctx.guild.id)
         if check_on_join == None:
             new_guild(ctx.guild.id)
+        
+        # Enable verification and send message
         enable_onjoin(ctx.guild.id)
         await ctx.send("```Verify when a user joins? True```")
 
 @client.command()
 async def disableonjoin(ctx):
     if ctx.guild and ctx.author.guild_permissions.administrator:
+        # Get guild info (if none, add to db)
         check_on_join = get_guild(ctx.guild.id)
         if check_on_join == None:
             new_guild(ctx.guild.id)
+        
+        # Disable verification and send message
         disable_onjoin(ctx.guild.id)
         await ctx.send("```Verify when a user joins? False```")
 
 @client.command()
 async def vstatus(ctx):
     if ctx.guild:
+        # Get guild info (if none, add to db)
         check_on_join = get_guild(ctx.guild.id)
         if check_on_join == None:
             new_guild(ctx.guild.id)
-        check_on_join = get_guild(ctx.guild.id)
+            check_on_join = get_guild(ctx.guild.id)
         on_join = bool(check_on_join[2])
+
+        # Send info message
         await ctx.send("```" +
             "Ping: " + "{0}ms".format(round(client.latency * 1000)) + "\n" +
             "User commands: " + "\n" +
@@ -326,16 +518,26 @@ async def vping(ctx):
 @client.command()
 async def verify(ctx):
     if ctx.guild:
+        # Get guild info (if none, add to db)
         check_on_join = get_guild(ctx.guild.id)
         if check_on_join == None:
             new_guild(ctx.guild.id)
-        check_on_join = get_guild(ctx.guild.id)
+            check_on_join = get_guild(ctx.guild.id)
+        
+        # Get user info for guild
         user_prev_verify = get_user_guild(ctx.guild.id, ctx.author.id)
+        
+        # If user not in db, add and send verify message
         if user_prev_verify == None:
             new_user(ctx.author.id, ctx.guild.id)
             await ctx.author.send(verify_msg(ctx.guild, check_on_join[1]))
+        
+        # Else send verify message
         elif user_prev_verify[4] == 0:
             await ctx.author.send(verify_msg(ctx.guild, check_on_join[1]))
 
+
+''' RUN '''
+# Keep alive and run client
 keep_alive()
 client.run(os.environ.get('DISCORD_TOKEN'))
