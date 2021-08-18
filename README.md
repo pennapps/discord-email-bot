@@ -20,7 +20,6 @@ User commands:
    .vstatus -> This help message
 
 Admin commands: 
- - A domain must be added before users can be verified.
  - Use .rolechange instead of server settings to change the name of the verified role.
    .enableonjoin -> Enables verifying users on join
    .disableonjoin -> Disables verifying users on join
