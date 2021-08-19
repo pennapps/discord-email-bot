@@ -8,13 +8,6 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail
 from keep_alive import keep_alive
 
-# Uncomment for dotenv
-'''
-import dotenv
-dotenv.load_dotenv()
-'''
-
-
 ''' INITIALIZE BOT DATABASE '''
 db = EmailBotDB()
 
@@ -35,7 +28,7 @@ async def on_ready():
     # Log login message and set Game
     print("We have logged in as {0.user}".format(client))
     await client.change_presence(
-        activity=discord.Game(name='penn app')
+        activity=discord.Game(name="github.com/pennapps/EmailBot")
     )
 
 @client.event
@@ -48,7 +41,7 @@ async def on_member_join(member):
         db.new_guild(member.guild.id)
     
     # Else if verification is enabled for the guild
-    elif curr_guild[2] == 1:
+    elif curr_guild[1] == 1:
         # Check if user exists with guild in db
         user_guild_info = db.get_user_guild(member.guild.id, member.id)
         
@@ -66,12 +59,12 @@ async def on_member_join(member):
         # Else if user is verified
         elif user_guild_info[4] == 1:
             # Change role to verified role (create if doesn't exist)
-            role = discord.utils.get(member.guild.roles, name=curr_guild[3])
+            role = discord.utils.get(member.guild.roles, name=curr_guild[2])
             if not role:
-                await member.guild.create_role(name=curr_guild[3])
+                await member.guild.create_role(name=curr_guild[2])
                 role = discord.utils.get(
                     member.guild.roles, 
-                    name=curr_guild[3]
+                    name=curr_guild[2]
                 )
             
             if role not in member.roles:
@@ -130,8 +123,8 @@ async def on_message(message):
                     print(response.body)
                     print(response.headers)
                     await message.channel.send(
-                        "Email sent. **Reply here with your verification code**. \
-                        If you haven't received it, check your spam folder."
+                        "Email sent. **Reply here with your verification code**. " +
+                        "If you haven't received it, check your spam folder."
                     )
                 except Exception as e:
                     await message.channel.send("Email failed to send.")
@@ -189,7 +182,7 @@ async def on_message(message):
                 
                 # Create unverified role if one doesn't exist
                 if not unverified_role:
-                    await user_guild.create_role(name=guild_info[3])
+                    await user_guild.create_role(name='unverified')
                     unverified_role = discord.utils.get(
                         user_guild.roles, 
                         name='unverified'
@@ -201,12 +194,37 @@ async def on_message(message):
                 # Send confirmation message
                 await message.channel.send(
                     "You have been verified on " + 
-                    client.get_guild(user[1]).name + "."
+                    client.get_guild(user[1]).name + 
+                    ". Please enter your team name. If you are not on a team," +
+                    " send \".SKIP\""
                 )
         else:
             await message.channel.send("Incorrect code.")
-    elif message.guild == None:
-        await message.channel.send("Invalid email.")
+
+    # Else check if user has been verified
+    else:
+        user_guilds = db.get_users_guilds(message.author.id)
+        for user in user_guilds:
+            # If user is verified, this bot should handle nickname changes
+            if user[4] == 1:
+                if message_content and message_content != ".SKIP":
+                    user_guild = client.get_guild(user[1])
+                    guild_info = db.get_guild(user[1])
+
+                    member = user_guild.get_member(message.author.id)
+                    new_nick = message_content + "-" + member.name
+                    await member.edit(nick=new_nick)
+                    await message.channel.send(
+                        "Nickname successfully changed to " + new_nick + ". " +
+                        "If your team name changes, reply back with the " + 
+                        "new name. Make sure that all your team members " + 
+                        "change their team name!"
+                    )
+            
+            # Else we have an invalid email
+            elif message.guild == None:
+                await message.channel.send("Invalid email.")
+    
     await client.process_commands(message)
 
 @client.event
@@ -232,7 +250,7 @@ async def rolechange(ctx, role=None):
         # Get current verified role
         curr_verified_role = discord.utils.get(
             ctx.guild.roles, 
-            name=curr_guild[3]
+            name=curr_guild[2]
         )
         
         # Check if verified role doesn't exist
@@ -296,7 +314,7 @@ async def vstatus(ctx):
             "   .rolechange role -> Changes the name of the verified role" + "\n\n" +
             "Domains: all\n" + 
             "Verify when a user joins? (default=False): " + str(on_join) + "\n" + 
-            "Verified role (default=Verified): " + curr_guild[3] + "```"
+            "Verified role (default=Verified): " + curr_guild[2] + "```"
         )
 
 @client.command()
